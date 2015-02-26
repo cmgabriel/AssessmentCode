@@ -11,18 +11,42 @@
 #import <MBProgressHUD/MBProgressHUD.h>
 
 @interface ViewController ()
+
 -(void) loadDataFromURL:(NSString *) data;
+
 -(NSString *) getTextToDisplay:(NSDictionary *) dataDictionary;
+
+-(void) showAlertMessageWithTitle:(NSString *) alertTitle message:(NSString *)alertMessage;
+
 @end
 
 @implementation ViewController
 
 @synthesize dataArrayObject;
+
 @synthesize dataTextField;
 
 - (void)viewDidLoad {
     [super viewDidLoad];
     // Do any additional setup after loading the view, typically from a nib.
+    
+    UITapGestureRecognizer *tap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(dismissKeyboard)];
+    [self.view addGestureRecognizer:tap];
+    
+    //Check for internet connectivity
+    
+    __block ViewController *weakRef = self;
+    [[AFNetworkReachabilityManager sharedManager] setReachabilityStatusChangeBlock:^(AFNetworkReachabilityStatus status) {
+       switch(status)
+        {
+                case AFNetworkReachabilityStatusNotReachable:
+                [weakRef showAlertMessageWithTitle:kNetworkErrorTitle
+                                           message:kNetworkErrorMessage];
+                break;
+        }
+    }];
+    
+    [[AFNetworkReachabilityManager sharedManager] startMonitoring];
 }
 
 - (void)didReceiveMemoryWarning {
@@ -43,7 +67,7 @@
 
 -(UITableViewCell *) tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath
 {
-    static NSString *cell_identifier = @"resultstableviewidentifier";
+    static NSString *cell_identifier = kCellIdentifier;
     
     UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:cell_identifier];
     
@@ -55,27 +79,35 @@
     
     
     NSDictionary *resultObject = [dataArrayObject objectAtIndex:indexPath.row];
+    
     labelView.text = [self getTextToDisplay:resultObject];
+    
     [labelView setNeedsDisplay];
     
-    NSLog(@"Object %@",resultObject);
     
     return cell;
 }
 
 - (IBAction)goButtonTapped:(id)sender {
-    NSLog(@"Go button pressed");
+    
     NSString *textData = self.dataTextField.text;
     
     if([textData isEqualToString:@""])
     {
-        UIAlertView *alertView = [[UIAlertView alloc] initWithTitle:@"Error" message:@"The field cannot be left blank." delegate:nil cancelButtonTitle:@"Ok" otherButtonTitles: nil];
+        UIAlertView *alertView = [[UIAlertView alloc] initWithTitle:kEmptyTextErrorTitle
+                                                            message:kEmptyTextErrorMessage
+                                                           delegate:nil
+                                                  cancelButtonTitle:kEmptyTextErrorButtonText
+                                                  otherButtonTitles: nil];
         [alertView show];
     }
     else
     {
-        NSLog(@"%@",textData);
+        
         //Enable the AFNetworking request and load the data in the tableview.
+        
+        [self.dataTextField resignFirstResponder];
+        
         [self loadDataFromURL:textData];
     }
 }
@@ -85,9 +117,11 @@
 
 -(void) loadDataFromURL:(NSString *) data
 {
-    //Load the data using the AFNetworking operation.
+    //Load the data using AFNetworking operation.
     NSString *urlString = [NSString stringWithFormat:@"%@?sf=%@",DATA_URL,data];
+    
     NSURL *url = [NSURL URLWithString:urlString];
+    
     NSURLRequest *request = [NSURLRequest requestWithURL:url];
     
     //Operation
@@ -105,9 +139,11 @@
             if([responseObject isKindOfClass:[NSData class]])
             {
                 //Convert the data to dataobject.
-                NSArray *responseArray = (NSArray *)[NSJSONSerialization JSONObjectWithData:responseObject options:NSJSONReadingMutableContainers error:nil];
+                NSArray *responseArray = (NSArray *)[NSJSONSerialization JSONObjectWithData:responseObject
+                                                                                    options:NSJSONReadingMutableContainers
+                                                                                      error:nil];
                 
-                self.dataArrayObject = [[responseArray objectAtIndex:0] objectForKey:@"lfs"];
+                self.dataArrayObject = [[responseArray objectAtIndex:0] objectForKey:kLFMultipleItemsKey];
                 
                 dispatch_sync(dispatch_get_main_queue(), ^{
                     [self.resultsTableView reloadData];
@@ -117,10 +153,16 @@
         });
         
         [MBProgressHUD hideAllHUDsForView:self.view animated:YES];
+        
     } failure:^(AFHTTPRequestOperation *operation, NSError *error) {
-        NSLog(@"Operation Unsuccessful %@",[error description]);
-        UIAlertView *alert = [[UIAlertView alloc] initWithTitle:@"Connection Error" message:@"Cannot fetch data from feed. Please try again later" delegate:nil cancelButtonTitle:@"Ok" otherButtonTitles: nil];
+
+        UIAlertView *alert = [[UIAlertView alloc] initWithTitle:kConnectionErrorTitle
+                                                        message:kConnectionErrorMessage
+                                                       delegate:nil
+                                              cancelButtonTitle:kConnectionErrorButtonText
+                                              otherButtonTitles: nil];
         [alert show];
+
         [MBProgressHUD hideAllHUDsForView:self.view animated:YES];
         
     }];
@@ -129,8 +171,26 @@
 
 -(NSString *) getTextToDisplay:(NSDictionary *) dataDictionary
 {
-    NSString *displayText = [dataDictionary objectForKey:@"lf"];
+    NSString *displayText = [dataDictionary objectForKey:kLFSingleItemKey];
     
     return  displayText;
 }
+
+-(void) showAlertMessageWithTitle:(NSString *) alertTitle message:(NSString *)alertMessage
+{
+    UIAlertView *alert = [[UIAlertView alloc] initWithTitle:alertTitle
+                                                    message:alertMessage
+                                                   delegate:nil
+                                          cancelButtonTitle:@"Ok"
+                                          otherButtonTitles: nil];
+    [alert show];
+}
+
+#pragma mark -
+#pragma mark - Dismiss Keyboard
+-(void) dismissKeyboard
+{
+    [self.dataTextField resignFirstResponder];
+}
+
 @end
